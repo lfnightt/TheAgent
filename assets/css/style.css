@@ -291,6 +291,12 @@ body.is-chat {
   border-radius: 10px;
   background: #33302e;
   color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: right;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -298,6 +304,12 @@ body.is-chat {
 .chat__ai {
   max-width: min(720px, 78%);
   color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: right;
 }
 
 .chat__ai-head {
