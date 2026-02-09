@@ -199,12 +199,141 @@ textarea {
   padding: 20px;
 }
 
+body.is-chat .main {
+  place-items: stretch;
+  padding: 20px;
+}
+
 .center {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 22px;
   transform: translateY(-14px);
+}
+
+body.is-chat .center {
+  width: 100%;
+  height: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  align-items: center;
+  gap: 12px;
+  transform: none;
+}
+
+body.is-chat #landingTitle,
+body.is-chat #landingTitleMobile {
+  display: none;
+}
+
+.chat {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.is-chat .chat {
+  position: fixed;
+  top: 48px;
+  left: 55px;
+  right: 0;
+  bottom: var(--composer-offset, 160px);
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+  z-index: 3;
+}
+
+body.is-chat {
+  overflow: hidden;
+}
+
+.chat[hidden] {
+  display: none;
+}
+
+.chat__messages {
+  height: 100%;
+  overflow: auto;
+  padding: 6px 0;
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat__messages::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.chat__row {
+  width: 100%;
+  display: flex;
+}
+
+.chat__row--user {
+  justify-content: flex-end;
+}
+
+.chat__row--ai {
+  justify-content: flex-start;
+}
+
+.chat__bubble {
+  max-width: min(720px, 78%);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #33302e;
+  color: #fff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat__ai {
+  max-width: min(720px, 78%);
+  color: #fff;
+}
+
+.chat__ai-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: rgba(199, 194, 188, 0.8);
+  font-size: 12px;
+}
+
+.chat__ai-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.chat__ai-icon svg,
+.chat__ai-icon img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.chat__ai-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+body.is-chat .prompt {
+  position: fixed;
+  bottom: 20px;
+  left: calc(55px + (100vw - 55px) / 2);
+  transform: translateX(-50%);
+  z-index: 6;
 }
 
 .title {
@@ -234,9 +363,66 @@ textarea {
   border-radius: 10px;
   padding: 10px 12px;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr auto;
   gap: 10px;
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.25);
+}
+
+.prompt.prompt--has-file {
+  height: 192px;
+}
+
+.prompt__file {
+  display: flex;
+  align-items: center;
+  padding: 4px 0 0 0;
+}
+
+.prompt__file[hidden] {
+  display: none;
+}
+
+.prompt__file-tile {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #23211f;
+  border: 1px solid rgba(65, 61, 57, 0.95);
+  color: rgba(199, 194, 188, 0.92);
+  flex: none;
+  position: relative;
+}
+
+.prompt__file-tile > i {
+  font-size: 28px;
+}
+
+.prompt__file-clear {
+  width: 22px;
+  height: 22px;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 1px solid rgba(65, 61, 57, 0.95);
+  border-radius: 999px;
+  background: rgba(35, 33, 31, 0.85);
+  color: rgba(199, 194, 188, 0.86);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.prompt__file-clear i {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.prompt__file-clear:hover {
+  background: rgba(35, 33, 31, 1);
+  color: rgba(199, 194, 188, 1);
 }
 
 .prompt__input {
@@ -251,6 +437,8 @@ textarea {
   line-height: 1.4;
   padding: 4px 0 0 0;
 }
+
+
 
 .prompt__input::placeholder {
   color: rgba(199, 194, 188, 0.38);
@@ -279,6 +467,11 @@ textarea {
   color: rgba(199, 194, 188, 0.86);
   cursor: pointer;
   padding: 0;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.icon-btn[hidden] {
+  display: none;
 }
 
 .icon-btn i {
@@ -294,6 +487,12 @@ textarea {
 
 .icon-btn:hover {
   background: rgba(255, 255, 255, 0.04);
+  color: rgba(199, 194, 188, 1);
+}
+
+.icon-btn.is-active {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: rgba(65, 61, 57, 1);
   color: rgba(199, 194, 188, 1);
 }
 
@@ -704,6 +903,10 @@ textarea {
     border-radius: 14px;
     padding: 12px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  }
+
+  .prompt.prompt--has-file {
+    height: 192px;
   }
 
   .prompt__input {
