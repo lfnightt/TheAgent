@@ -1,6 +1,10 @@
 (() => {
   const form = document.querySelector('.prompt');
   const input = document.getElementById('promptInput');
+  const chat = document.getElementById('chat');
+  const chatMessages = document.getElementById('chatMessages');
+  const landingTitle = document.getElementById('landingTitle');
+  const landingTitleMobile = document.getElementById('landingTitleMobile');
   const battleBtn = document.getElementById('battleBtn');
   const battleMenu = document.getElementById('battleMenu');
   const sxsControls = document.getElementById('sxsControls');
@@ -8,8 +12,252 @@
   const modelBtnB = document.getElementById('modelBtnB');
   const modelMenuA = document.getElementById('modelMenuA');
   const modelMenuB = document.getElementById('modelMenuB');
+  const attachImageBtn = document.querySelector('.icon-btn[aria-label="Attach image"]');
+  const addBtn = document.querySelector('.icon-btn[aria-label="Add"]');
+  const textFileInput = document.getElementById('textFileInput');
+  const promptFile = document.getElementById('promptFile');
+  const promptFileClear = document.getElementById('promptFileClear');
 
   if (!form || !input) return;
+
+  const ensureChatMode = () => {
+    document.body.classList.add('is-chat');
+    if (chat) chat.hidden = false;
+    if (landingTitle) landingTitle.hidden = true;
+    if (landingTitleMobile) landingTitleMobile.hidden = true;
+    updateComposerOffset();
+  };
+
+  const updateComposerOffset = () => {
+    if (!form) return;
+    const rect = form.getBoundingClientRect();
+    const computed = window.getComputedStyle(form);
+    const bottom = Number.parseFloat(computed.bottom || '0') || 0;
+    const height = rect.height || 0;
+    const extraGap = 20;
+    const offset = Math.max(120, Math.round(bottom + height + extraGap));
+    document.documentElement.style.setProperty('--composer-offset', `${offset}px`);
+  };
+
+  const scrollChatToBottom = () => {
+    if (!chatMessages) return;
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  };
+
+  const getSelectedModelUi = () => {
+    const btn = modelBtnA || null;
+    if (!btn) return { name: 'AI' };
+    const nameEl = btn.querySelector('.select-btn__label');
+    const name = nameEl ? nameEl.textContent.trim() : 'AI';
+    return { name };
+  };
+
+  const appendUserMessage = (text) => {
+    if (!chatMessages) return;
+    const row = document.createElement('div');
+    row.className = 'chat__row chat__row--user';
+    const bubble = document.createElement('div');
+    bubble.className = 'chat__bubble';
+    bubble.textContent = text;
+    row.appendChild(bubble);
+    chatMessages.appendChild(row);
+  };
+
+  const appendAiMessage = (text) => {
+    if (!chatMessages) return;
+    const { name } = getSelectedModelUi();
+
+    const row = document.createElement('div');
+    row.className = 'chat__row chat__row--ai';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'chat__ai';
+
+    const head = document.createElement('div');
+    head.className = 'chat__ai-head';
+
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'chat__ai-icon';
+    const safeIcon = document.createElement('i');
+    safeIcon.className = 'fa-solid fa-robot';
+    safeIcon.setAttribute('aria-hidden', 'true');
+    iconWrap.appendChild(safeIcon);
+    head.appendChild(iconWrap);
+
+    const label = document.createElement('span');
+    label.textContent = name;
+    head.appendChild(label);
+
+    const msg = document.createElement('div');
+    msg.className = 'chat__ai-text';
+    msg.textContent = text;
+
+    wrap.appendChild(head);
+    wrap.appendChild(msg);
+    row.appendChild(wrap);
+    chatMessages.appendChild(row);
+
+    return { row, msg };
+  };
+
+  const requestAiReply = async (message) => {
+    const baseUrl =
+      typeof window !== 'undefined' && typeof window.WORKER_CHAT_URL === 'string'
+        ? window.WORKER_CHAT_URL.trim().replace(/\/+$/, '')
+        : '';
+    const endpoint = baseUrl ? `${baseUrl}/api/chat` : '/api/chat';
+
+    const selectedKey = selectedModelA;
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, modelKey: selectedKey }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = data && typeof data.error === 'string' ? data.error : 'Request failed';
+      const status = data && typeof data.status === 'number' ? data.status : null;
+      const details = data && typeof data.details === 'string' ? data.details : '';
+      const msg = `${err}${status ? ` (HF ${status})` : ''}${details ? `: ${details}` : ''}`;
+      throw new Error(msg);
+    }
+
+    const reply = data && typeof data.reply === 'string' ? data.reply : '';
+    if (!reply) throw new Error('Empty reply');
+    return reply;
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey) return;
+    e.preventDefault();
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return;
+    }
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
+
+  if (attachImageBtn) {
+    attachImageBtn.addEventListener('click', () => {
+      attachImageBtn.classList.toggle('is-active');
+    });
+  }
+
+  const getFileExt = (name) => {
+    const safe = (name || '').trim();
+    const dot = safe.lastIndexOf('.');
+    if (dot === -1) return '';
+    return safe.slice(dot + 1).toLowerCase();
+  };
+
+  const isAllowedTextFile = (file) => {
+    if (!file) return false;
+    if (typeof file.type === 'string' && file.type.startsWith('text/')) return true;
+    const allowedExts = new Set([
+      'txt',
+      'md',
+      'json',
+      'csv',
+      'xml',
+      'yaml',
+      'yml',
+      'html',
+      'htm',
+      'css',
+      'js',
+      'ts',
+    ]);
+    return allowedExts.has(getFileExt(file.name));
+  };
+
+  const iconForExt = (ext) => {
+    switch ((ext || '').toLowerCase()) {
+      case 'html':
+      case 'htm':
+        return 'fa-brands fa-html5';
+      case 'css':
+        return 'fa-brands fa-css3-alt';
+      case 'js':
+        return 'fa-brands fa-js';
+      case 'ts':
+      case 'json':
+      case 'xml':
+      case 'yaml':
+      case 'yml':
+      case 'md':
+      case 'txt':
+        return 'fa-regular fa-file-lines';
+      case 'csv':
+        return 'fa-solid fa-file-csv';
+      default:
+        return 'fa-regular fa-file-lines';
+    }
+  };
+
+  const setSelectedFile = (file) => {
+    const has = !!file;
+    form.classList.toggle('prompt--has-file', has);
+    if (!promptFile) return;
+
+    promptFile.hidden = !has;
+    if (!has) {
+      promptFile.removeAttribute('title');
+      const icon = promptFile.querySelector('.prompt__file-tile i');
+      if (icon) icon.className = 'fa-regular fa-file-lines';
+      return;
+    }
+
+    promptFile.title = file.name;
+    const ext = getFileExt(file.name);
+    const icon = promptFile.querySelector('.prompt__file-tile i');
+    if (icon) icon.className = iconForExt(ext);
+
+    updateComposerOffset();
+  };
+
+  const clearSelectedFile = () => {
+    if (textFileInput) textFileInput.value = '';
+    setSelectedFile(null);
+    updateComposerOffset();
+  };
+
+  window.addEventListener('resize', () => {
+    if (!document.body.classList.contains('is-chat')) return;
+    updateComposerOffset();
+  });
+
+  if (addBtn && textFileInput) {
+    addBtn.addEventListener('click', () => {
+      textFileInput.click();
+    });
+  }
+
+  if (textFileInput) {
+    textFileInput.addEventListener('change', () => {
+      const file = textFileInput.files && textFileInput.files[0] ? textFileInput.files[0] : null;
+      if (!file) {
+        clearSelectedFile();
+        return;
+      }
+
+      if (!isAllowedTextFile(file)) {
+        clearSelectedFile();
+        alert('Only text files are allowed.');
+        return;
+      }
+
+      setSelectedFile(file);
+    });
+  }
+
+  if (promptFileClear) {
+    promptFileClear.addEventListener('click', () => {
+      clearSelectedFile();
+    });
+  }
 
   const getBattleBtnPrimaryIcon = () => {
     if (!battleBtn) return null;
@@ -59,6 +307,11 @@
     const normalized = (mode || '').trim().toLowerCase();
     const isSxs = normalized === 'side by side';
     const isDirect = normalized === 'direct chat';
+
+    if (attachImageBtn) {
+      attachImageBtn.hidden = !isDirect;
+      if (!isDirect) attachImageBtn.classList.remove('is-active');
+    }
 
     const shouldShow = isSxs || isDirect;
     sxsControls.hidden = !shouldShow;
@@ -275,7 +528,7 @@
   initModelButtons();
   setMode(battleBtnLabel ? battleBtnLabel.textContent.trim() : 'Battle');
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const value = input.value.trim();
@@ -284,7 +537,23 @@
       return;
     }
 
+    ensureChatMode();
+    appendUserMessage(value);
+    const ai = appendAiMessage('Generating...');
+    scrollChatToBottom();
+
     input.value = '';
     input.focus();
+
+    try {
+      const reply = await requestAiReply(value);
+      if (ai && ai.msg) ai.msg.textContent = reply;
+    } catch (err) {
+      if (ai && ai.msg) {
+        ai.msg.textContent = `Error: ${err instanceof Error ? err.message : 'Request failed'}`;
+      }
+    } finally {
+      scrollChatToBottom();
+    }
   });
 })();
