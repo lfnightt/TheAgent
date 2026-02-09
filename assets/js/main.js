@@ -17,6 +17,8 @@
   const textFileInput = document.getElementById('textFileInput');
   const promptFile = document.getElementById('promptFile');
   const promptFileClear = document.getElementById('promptFileClear');
+  const sendBtn = document.getElementById('sendBtn');
+  const sendIcon = document.getElementById('sendIcon');
 
   if (!form || !input) return;
 
@@ -39,9 +41,136 @@
     document.documentElement.style.setProperty('--composer-offset', `${offset}px`);
   };
 
+  let shouldAutoScroll = true;
+  const isNearBottom = () => {
+    if (!chatMessages) return true;
+    const threshold = 80;
+    return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < threshold;
+  };
+
   const scrollChatToBottom = () => {
     if (!chatMessages) return;
+    if (!shouldAutoScroll) return;
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  };
+
+  if (chatMessages) {
+    chatMessages.addEventListener(
+      'scroll',
+      () => {
+        shouldAutoScroll = isNearBottom();
+      },
+      { passive: true }
+    );
+  }
+
+  const chatHistory = [];
+
+  let isGenerating = false;
+  let activeAbortController = null;
+  let activeTyping = null;
+
+  const setSendingState = (generating) => {
+    isGenerating = generating;
+
+    if (input) input.disabled = generating;
+    if (addBtn) addBtn.disabled = generating;
+    if (attachImageBtn) attachImageBtn.disabled = generating;
+
+    if (sendBtn) {
+      sendBtn.setAttribute('aria-label', generating ? 'Stop' : 'Send');
+      sendBtn.dataset.state = generating ? 'stop' : 'send';
+    }
+    if (sendIcon) {
+      sendIcon.className = generating ? 'fa-solid fa-stop' : 'fa-solid fa-arrow-right';
+    }
+  };
+
+  const stopGeneration = () => {
+    if (activeAbortController) {
+      try {
+        activeAbortController.abort();
+      } catch {
+        // ignore
+      }
+    }
+    if (activeTyping && typeof activeTyping.cancel === 'function') {
+      activeTyping.cancel();
+    }
+    activeAbortController = null;
+    activeTyping = null;
+    setSendingState(false);
+  };
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', (e) => {
+      if (!isGenerating) return;
+      e.preventDefault();
+      stopGeneration();
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (activeTyping && typeof activeTyping.kick === 'function') activeTyping.kick();
+    }
+  });
+
+  const typewriterToElement = (el, fullText, opts = {}) => {
+    const text = String(fullText || '');
+    const minDelay = typeof opts.minDelay === 'number' ? opts.minDelay : 10;
+    const maxDelay = typeof opts.maxDelay === 'number' ? opts.maxDelay : 22;
+    const avgDelay = Math.max(1, Math.round((minDelay + maxDelay) / 2));
+
+    let i = 0;
+    let cancelled = false;
+    let timer = null;
+
+    const startAt = performance.now();
+
+    let doneResolve;
+    const done = new Promise((resolve) => {
+      doneResolve = resolve;
+    });
+
+    const step = () => {
+      if (cancelled) return;
+      if (!el) return;
+
+      const now = performance.now();
+      const target = Math.min(text.length, Math.max(i + 1, Math.floor((now - startAt) / avgDelay)));
+      i = target;
+      el.textContent = text.slice(0, i);
+      scrollChatToBottom();
+
+      if (i >= text.length) {
+        if (typeof doneResolve === 'function') doneResolve('done');
+        return;
+      }
+      const delay = Math.round(minDelay + Math.random() * (maxDelay - minDelay));
+      timer = window.setTimeout(step, delay);
+    };
+
+    const start = () => {
+      if (!el) return;
+      el.textContent = '';
+      step();
+    };
+
+    const cancel = () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+      if (typeof doneResolve === 'function') doneResolve('cancelled');
+    };
+
+    const kick = () => {
+      if (cancelled) return;
+      if (timer) window.clearTimeout(timer);
+      step();
+    };
+
+    start();
+    return { cancel, kick, done };
   };
 
   const getSelectedModelUi = () => {
@@ -100,7 +229,7 @@
     return { row, msg };
   };
 
-  const requestAiReply = async (message) => {
+  const requestAiReply = async (message, signal) => {
     const baseUrl =
       typeof window !== 'undefined' && typeof window.WORKER_CHAT_URL === 'string'
         ? window.WORKER_CHAT_URL.trim().replace(/\/+$/, '')
@@ -108,11 +237,13 @@
     const endpoint = baseUrl ? `${baseUrl}/api/chat` : '/api/chat';
 
     const selectedKey = selectedModelA;
+    const history = chatHistory.slice(-12);
 
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, modelKey: selectedKey }),
+      body: JSON.stringify({ message, modelKey: selectedKey, messages: history }),
+      signal,
     });
 
     const data = await res.json().catch(() => null);
@@ -531,6 +662,8 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    if (isGenerating) return;
+
     const value = input.value.trim();
     if (!value) {
       input.focus();
@@ -539,20 +672,36 @@
 
     ensureChatMode();
     appendUserMessage(value);
-    const ai = appendAiMessage('Generating...');
+    const ai = appendAiMessage('');
+    shouldAutoScroll = true;
     scrollChatToBottom();
+
+    setSendingState(true);
+    activeAbortController = new AbortController();
+
+    chatHistory.push({ role: 'user', content: value });
 
     input.value = '';
     input.focus();
 
     try {
-      const reply = await requestAiReply(value);
-      if (ai && ai.msg) ai.msg.textContent = reply;
+      const reply = await requestAiReply(value, activeAbortController.signal);
+      chatHistory.push({ role: 'assistant', content: reply });
+      if (ai && ai.msg) {
+        activeTyping = typewriterToElement(ai.msg, reply, { minDelay: 10, maxDelay: 22 });
+        await activeTyping.done;
+      }
     } catch (err) {
       if (ai && ai.msg) {
-        ai.msg.textContent = `Error: ${err instanceof Error ? err.message : 'Request failed'}`;
+        const isAbort = err && typeof err === 'object' && (err.name === 'AbortError' || err.code === 20);
+        ai.msg.textContent = isAbort
+          ? 'متوقف شد.'
+          : `Error: ${err instanceof Error ? err.message : 'Request failed'}`;
       }
     } finally {
+      activeAbortController = null;
+      activeTyping = null;
+      setSendingState(false);
       scrollChatToBottom();
     }
   });
