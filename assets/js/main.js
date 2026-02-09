@@ -438,6 +438,7 @@
     const normalized = (mode || '').trim().toLowerCase();
     const isSxs = normalized === 'side by side';
     const isDirect = normalized === 'direct chat';
+    currentMode = normalized;
 
     if (attachImageBtn) {
       attachImageBtn.hidden = !isDirect;
@@ -451,12 +452,18 @@
     const second = items[1] || null;
     if (second) second.hidden = isDirect;
 
+    if (isDirect) {
+      selectedModelB = null;
+    }
+
     if (!shouldShow || isDirect) {
       setModelMenuOpen('B', false);
     }
     if (!shouldShow) {
       setModelMenuOpen('A', false);
     }
+
+    updateDisabledModels();
   };
 
   const setModelButtonFromItem = (btn, item) => {
@@ -475,8 +482,28 @@
 
   let selectedModelA = null;
   let selectedModelB = null;
+  let currentMode = '';
 
   const updateDisabledModels = () => {
+    if (currentMode === 'direct chat') {
+      if (modelMenuA) {
+        const itemsA = Array.from(modelMenuA.querySelectorAll('.model-menu__item'));
+        for (const it of itemsA) {
+          it.disabled = false;
+          it.classList.remove('is-disabled');
+          it.setAttribute('aria-disabled', 'false');
+        }
+      }
+      if (modelMenuB) {
+        const itemsB = Array.from(modelMenuB.querySelectorAll('.model-menu__item'));
+        for (const it of itemsB) {
+          it.disabled = false;
+          it.classList.remove('is-disabled');
+          it.setAttribute('aria-disabled', 'false');
+        }
+      }
+      return;
+    }
     if (modelMenuA && modelMenuB) {
       const itemsA = Array.from(modelMenuA.querySelectorAll('.model-menu__item'));
       const itemsB = Array.from(modelMenuB.querySelectorAll('.model-menu__item'));
@@ -611,7 +638,7 @@
       const item = e.target.closest('.model-menu__item');
       if (!item) return;
       if (item.disabled || item.getAttribute('aria-disabled') === 'true') return;
-      if (item.dataset.model && item.dataset.model === selectedModelB) return;
+      if (currentMode !== 'direct chat' && item.dataset.model && item.dataset.model === selectedModelB) return;
       setModelButtonFromItem(modelBtnA, item);
       selectedModelA = item.dataset.model || null;
       updateDisabledModels();
