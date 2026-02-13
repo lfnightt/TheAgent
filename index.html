@@ -7,6 +7,9 @@
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+      id="faCdn"
+      onerror="document.documentElement.classList.add('no-fa')"
+      onload="document.documentElement.classList.remove('no-fa')"
       referrerpolicy="no-referrer"
     />
     <link rel="stylesheet" href="assets/css/style.css" />
@@ -21,9 +24,11 @@
               <path d="M9.5 21V3" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
               <path d="M5.5 10L7.25 12L5.5 14" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
+            <span class="sidebar__btn-label">Menu</span>
           </button>
-          <button class="icon-btn icon-btn--ghost" type="button" aria-label="Search">
-            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <button class="icon-btn icon-btn--ghost" id="newChatBtn" type="button" aria-label="New chat">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            <span class="sidebar__btn-label">New chat</span>
           </button>
         </div>
         <div class="sidebar__bottom">
@@ -41,8 +46,8 @@
             </svg>
           </button>
           <button class="pill" id="battleBtn" type="button" aria-label="Workspace" aria-haspopup="menu" aria-expanded="false" aria-controls="battleMenu">
-            <i class="fa-solid fa-khanda" aria-hidden="true"></i>
-            <span class="pill__label">Battle</span>
+            <i class="fa-regular fa-comment" aria-hidden="true"></i>
+            <span class="pill__label">Direct Chat</span>
             <i class="fa-solid fa-chevron-down pill__chev" aria-hidden="true"></i>
           </button>
 
@@ -131,7 +136,7 @@
           </div>
 
           <div class="menu" id="battleMenu" role="menu" aria-label="Battle menu" data-state="closed">
-            <button class="menu__item" type="button" role="menuitem">
+            <button class="menu__item is-disabled" type="button" role="menuitem" aria-disabled="true" title="Coming soon — this feature will be added soon." data-tooltip="Coming soon — this feature will be added soon.">
               <div class="menu__main">
                 <div class="menu__title">Battle</div>
                 <div class="menu__desc">Battle with 2 anonymous models</div>
@@ -139,7 +144,7 @@
               <i class="fa-solid fa-khanda menu__icon" aria-hidden="true"></i>
             </button>
 
-            <button class="menu__item" type="button" role="menuitem">
+            <button class="menu__item is-disabled" type="button" role="menuitem" aria-disabled="true" title="Coming soon — this feature will be added soon." data-tooltip="Coming soon — this feature will be added soon.">
               <div class="menu__main">
                 <div class="menu__title">Side by Side</div>
                 <div class="menu__desc">Compare 2 models of your choice</div>
