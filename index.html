@@ -12,6 +12,11 @@
       onload="document.documentElement.classList.remove('no-fa')"
       referrerpolicy="no-referrer"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css"
+      referrerpolicy="no-referrer"
+    />
     <link rel="stylesheet" href="assets/css/style.css" />
   </head>
   <body>
@@ -30,9 +35,6 @@
             <i class="fa-solid fa-plus" aria-hidden="true"></i>
             <span class="sidebar__btn-label">New chat</span>
           </button>
-        </div>
-        <div class="sidebar__bottom">
-          <div class="avatar" aria-hidden="true"></div>
         </div>
       </aside>
 
@@ -165,8 +167,8 @@
 
       <main class="main" aria-label="Main">
         <section class="center">
-          <h1 class="title" id="landingTitle">Free For You</h1>
-          <h2 class="title title--mobile" id="landingTitleMobile">Free For You</h2>
+          <h1 class="title" id="landingTitle"><a href="." class="title-link">Hello, I'm the agent</a></h1>
+          <h2 class="title title--mobile" id="landingTitleMobile"><a href="." class="title-link">Hello, I'm the agent</a></h2>
 
           <section class="chat" id="chat" hidden aria-label="Messages">
             <div class="chat__messages" id="chatMessages" aria-live="polite"></div>
@@ -208,6 +210,10 @@
     <script>
       window.WORKER_CHAT_URL = "https://theagent-api.ltfyamyry-0lt.workers.dev/";
     </script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+      referrerpolicy="no-referrer"
+    ></script>
     <script src="assets/js/main.js"></script>
   </body>
 </html>
