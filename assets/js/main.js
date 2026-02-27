@@ -21,6 +21,7 @@
   const sendBtn = document.getElementById('sendBtn');
   const sendIcon = document.getElementById('sendIcon');
   const sidebarMenuBtn = document.querySelector('.sidebar__top .icon-btn[aria-label="Menu"]');
+  const mobileSidebarBtn = document.querySelector('.header__left .header__icon[aria-label="Sidebar"]');
 
   if (document.documentElement.classList.contains('no-fa')) {
     document.body.classList.add('no-fa');
@@ -34,8 +35,74 @@
 
   if (!form || !input) return;
 
+  const prefersReducedMotion = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  };
+
+  const animateLandingTitle = (el) => {
+    if (!el) return;
+    if (el.hidden) return;
+    if (el.offsetParent === null) return;
+    const finalText = String(el.dataset.finalText || el.textContent || '').trim();
+    if (!finalText) return;
+    el.dataset.finalText = finalText;
+
+    el.classList.add('landing-title--fx');
+    el.classList.add('landing-title--typing');
+
+    const letterDelayMs = 180;
+
+    el.classList.add('landing-title--animating');
+
+    let currentIndex = 0;
+    let timer = null;
+
+    const typeNextLetter = () => {
+      if (currentIndex >= finalText.length) {
+        el.classList.remove('landing-title--animating');
+        el.classList.add('landing-title--settled');
+        el.classList.remove('landing-title--typing');
+        return;
+      }
+
+      el.textContent = finalText.slice(0, currentIndex + 1);
+      currentIndex++;
+
+      timer = window.setTimeout(typeNextLetter, letterDelayMs);
+    };
+
+    el.textContent = '';
+    timer = window.setTimeout(typeNextLetter, 400);
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      el.textContent = finalText;
+      el.classList.remove('landing-title--animating');
+      el.classList.remove('landing-title--typing');
+    };
+  };
+
+  const playLandingTitles = () => {
+    animateLandingTitle(landingTitle);
+    animateLandingTitle(landingTitleMobile);
+  };
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => playLandingTitles(), 300);
+    });
+  });
+
   if (sidebarMenuBtn) {
     sidebarMenuBtn.addEventListener('click', () => {
+      document.body.classList.toggle('is-sidebar-open');
+      updateComposerOffset();
+    });
+  }
+
+  if (mobileSidebarBtn) {
+    mobileSidebarBtn.addEventListener('click', () => {
       document.body.classList.toggle('is-sidebar-open');
       updateComposerOffset();
     });
@@ -60,6 +127,14 @@
     document.documentElement.style.setProperty('--composer-offset', `${offset}px`);
   };
 
+  let isImageMode = false;
+
+  const setImageMode = (enabled) => {
+    isImageMode = !!enabled;
+    if (attachImageBtn) attachImageBtn.classList.toggle('is-active', isImageMode);
+    if (input) input.placeholder = isImageMode ? 'Describe the image you want to generate…' : 'Ask anything...';
+  };
+
   let shouldAutoScroll = true;
   const isNearBottom = () => {
     if (!chatMessages) return true;
@@ -82,6 +157,248 @@
       { passive: true }
     );
   }
+
+  const CHAT_STORAGE_KEY = 'theagent_chat_history';
+  const CHAT_SESSION_KEY = 'theagent_chat_session';
+
+  const loadChatFromStorage = () => {
+    try {
+      const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+      const session = localStorage.getItem(CHAT_SESSION_KEY);
+      if (saved && session) {
+        const messages = JSON.parse(saved);
+        const sessionData = JSON.parse(session);
+        return { messages, mode: sessionData.mode || 'direct chat' };
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  const saveChatToStorage = () => {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatHistory));
+      localStorage.setItem(CHAT_SESSION_KEY, JSON.stringify({ mode: currentMode || 'direct chat' }));
+    } catch {
+      // ignore
+    }
+  };
+
+  const clearChatStorage = () => {
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+      localStorage.removeItem(CHAT_SESSION_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  const formatCodeBlocks = (text, opts = {}) => {
+    const source = String(text || '');
+    if (!source) return '';
+
+    const allowPartial = opts && opts.allowPartial === true;
+
+    const escapeHtml = (str) =>
+      String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const inlineCode = (raw) => `<code class="inline-code">${escapeHtml(raw)}</code>`;
+
+    const normalizeLang = (raw) => {
+      const s = String(raw || '').trim().toLowerCase();
+      if (!s) return '';
+      if (s === 'js') return 'javascript';
+      if (s === 'ts') return 'typescript';
+      if (s === 'py') return 'python';
+      if (s === 'sh' || s === 'shell') return 'bash';
+      return s;
+    };
+
+    const renderFence = (language, codeText) => {
+      const lang = normalizeLang(language);
+      const icon = 'fa-regular fa-file-code';
+      const label = lang || 'text';
+      const safeLang = escapeHtml(label);
+      const safeCode = escapeHtml(codeText);
+      const classLang = lang ? ` language-${escapeHtml(lang)}` : '';
+      return (
+        `<pre class="code-block" data-lang="${safeLang}">` +
+        `<div class="code-header">` +
+        `<div class="code-header__left"><i class="${icon}" aria-hidden="true"></i><span class="lang">${safeLang}</span></div>` +
+        `<button class="copy-btn" type="button" data-copy="code"><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span></button>` +
+        `</div>` +
+        `<code class="hljs${classLang}">${safeCode}</code>` +
+        `</pre>`
+      );
+    };
+
+    const out = [];
+    let i = 0;
+    while (i < source.length) {
+      const open = source.indexOf('```', i);
+      if (open === -1) {
+        const tail = source.slice(i);
+        out.push(escapeHtml(tail).replace(/`([^`]+)`/g, (_, c) => inlineCode(c)));
+        break;
+      }
+
+      const before = source.slice(i, open);
+      out.push(escapeHtml(before).replace(/`([^`]+)`/g, (_, c) => inlineCode(c)));
+
+      const afterTicks = open + 3;
+      const nl = source.indexOf('\n', afterTicks);
+      if (nl === -1) {
+        // Incomplete fence header
+        if (allowPartial) {
+          const lang = source.slice(afterTicks).trim();
+          out.push(renderFence(lang, ''));
+        } else {
+          out.push(escapeHtml(source.slice(open)));
+        }
+        break;
+      }
+
+      const lang = source.slice(afterTicks, nl).trim();
+      const close = source.indexOf('```', nl + 1);
+      if (close === -1) {
+        if (allowPartial) {
+          const codeText = source.slice(nl + 1);
+          out.push(renderFence(lang, codeText));
+          break;
+        }
+        // Not allowed to render partial, just escape remaining
+        out.push(escapeHtml(source.slice(open)));
+        break;
+      }
+
+      const codeText = source.slice(nl + 1, close);
+      out.push(renderFence(lang, codeText));
+      i = close + 3;
+    }
+
+    return out.join('');
+  };
+
+  const scheduleHighlight = (() => {
+    const timers = new WeakMap();
+    return (root) => {
+      if (!root) return;
+      const hljs = typeof window !== 'undefined' ? window.hljs : null;
+      if (!hljs || typeof hljs.highlightElement !== 'function') return;
+
+      const prev = timers.get(root);
+      if (prev) window.clearTimeout(prev);
+      const t = window.setTimeout(() => {
+        const codes = root.querySelectorAll ? root.querySelectorAll('pre.code-block code') : [];
+        for (const codeEl of codes) {
+          try {
+            codeEl.removeAttribute('data-highlighted');
+            hljs.highlightElement(codeEl);
+          } catch {
+            // ignore
+          }
+        }
+      }, 80);
+      timers.set(root, t);
+    };
+  })();
+
+  // Copy code function
+  const copyCode = (btn) => {
+    const pre = btn ? btn.closest('pre') : null;
+    const code = pre ? pre.querySelector('code') : null;
+    const text = code ? code.textContent : '';
+    if (!text) return;
+
+    const setBtn = (state) => {
+      if (!btn) return;
+      if (state === 'copied') {
+        btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i><span>Copied</span>';
+        return;
+      }
+      btn.innerHTML = '<i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy</span>';
+    };
+
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        setBtn('copied');
+        window.setTimeout(() => setBtn('idle'), 1400);
+      } catch {
+        // ignore
+      }
+    };
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setBtn('copied');
+          window.setTimeout(() => setBtn('idle'), 1400);
+        })
+        .catch(() => fallbackCopy());
+      return;
+    }
+    fallbackCopy();
+  };
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('button[data-copy="code"]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    copyCode(btn);
+  });
+
+  const restoreChatFromStorage = () => {
+    const saved = loadChatFromStorage();
+    if (!saved || !saved.messages || saved.messages.length === 0) return false;
+
+    // Restore mode
+    if (saved.mode) {
+      setMode(saved.mode);
+    }
+
+    // Show chat UI
+    document.body.classList.add('is-chat');
+    if (chat) chat.hidden = false;
+    if (landingTitle) landingTitle.hidden = true;
+    if (landingTitleMobile) landingTitleMobile.hidden = true;
+
+    // Restore messages visually
+    for (const msg of saved.messages) {
+      if (msg.role === 'user') {
+        appendUserMessage(msg.content);
+      } else if (msg.role === 'assistant') {
+        // Check if this is an image message
+        if (msg.imageUrl) {
+          appendAiImageMessage(msg.imageUrl);
+        } else {
+          const aiMsg = appendAiMessage('');
+          if (aiMsg && aiMsg.msg) {
+            aiMsg.msg.innerHTML = formatCodeBlocks(msg.content, { allowPartial: false });
+            scheduleHighlight(aiMsg.msg);
+          }
+        }
+      }
+    }
+
+    updateComposerOffset();
+    return true;
+  };
 
   const chatHistory = [];
 
@@ -184,10 +501,20 @@
       const now = performance.now();
       const target = Math.min(text.length, Math.max(i + 1, Math.floor((now - startAt) / avgDelay)));
       i = target;
-      el.textContent = text.slice(0, i);
+      const partial = text.slice(0, i);
+      if (partial.includes('```')) {
+        el.innerHTML = formatCodeBlocks(partial, { allowPartial: true });
+        scheduleHighlight(el);
+      } else {
+        el.textContent = partial;
+      }
       scrollChatToBottom();
 
       if (i >= text.length) {
+        if (el && text.includes('```')) {
+          el.innerHTML = formatCodeBlocks(text, { allowPartial: false });
+          scheduleHighlight(el);
+        }
         if (typeof doneResolve === 'function') doneResolve('done');
         return;
       }
@@ -275,12 +602,89 @@
     return { row, msg };
   };
 
-  const setThinking = (el) => {
+  const appendAiImageMessage = (imgUrl) => {
+    if (!chatMessages) return;
+
+    const row = document.createElement('div');
+    row.className = 'chat__row chat__row--ai';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'chat__ai';
+
+    const head = document.createElement('div');
+    head.className = 'chat__ai-head';
+
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'chat__ai-icon';
+    const safeIcon = document.createElement('i');
+    safeIcon.className = 'fa-regular fa-image';
+    safeIcon.setAttribute('aria-hidden', 'true');
+    iconWrap.appendChild(safeIcon);
+    head.appendChild(iconWrap);
+
+    const label = document.createElement('span');
+    label.textContent = 'Image';
+    head.appendChild(label);
+
+    const imgContainer = document.createElement('div');
+    imgContainer.className = 'chat__image-container';
+
+    const img = document.createElement('img');
+    img.className = 'chat__image';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = imgUrl;
+
+    // Hover controls overlay
+    const controls = document.createElement('div');
+    controls.className = 'chat__image-controls';
+
+    // Download button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'chat__image-btn';
+    downloadBtn.setAttribute('aria-label', 'Download image');
+    downloadBtn.title = 'Download';
+    downloadBtn.innerHTML = '<i class="fa-solid fa-download"></i>';
+    downloadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const link = document.createElement('a');
+      link.href = imgUrl;
+      link.download = `generated-image-${Date.now()}.png`;
+      link.click();
+    });
+
+    // Fullscreen button
+    const fullscreenBtn = document.createElement('button');
+    fullscreenBtn.className = 'chat__image-btn';
+    fullscreenBtn.setAttribute('aria-label', 'View fullscreen');
+    fullscreenBtn.title = 'Fullscreen';
+    fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+    fullscreenBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openImageModal(imgUrl);
+    });
+
+    controls.appendChild(downloadBtn);
+    controls.appendChild(fullscreenBtn);
+
+    imgContainer.appendChild(img);
+    imgContainer.appendChild(controls);
+
+    wrap.appendChild(head);
+    wrap.appendChild(imgContainer);
+    row.appendChild(wrap);
+    chatMessages.appendChild(row);
+
+    return { row, img };
+  };
+
+  const setThinking = (el, text = 'Thinking…') => {
     if (!el) return;
     el.textContent = '';
     const wrap = document.createElement('span');
     wrap.className = 'thinking thinking--shimmer';
-    wrap.textContent = 'Thinking…';
+    wrap.textContent = text;
     el.appendChild(wrap);
   };
 
@@ -500,10 +904,10 @@
       const safePrev = String(previousAnswer || '').trim();
       const safePrompt = String(userPrompt || '').trim();
       const msg =
-        `کاربر این پیام را داده:\n${safePrompt}\n\n` +
-        `این پاسخ قبلی تو بوده:\n${safePrev}\n\n` +
-        `حالا همان پاسخ را خیلی بهتر، دقیق\u200cتر و کاربردی\u200cتر بازنویسی کن. ` +
-        `اشتباهات را اصلاح کن، مثال/گام\u200cها را اگر لازم است اضافه کن، و پاسخ نهایی را روان و مختصر نگه دار.`;
+        `The user asked:\n${safePrompt}\n\n` +
+        `Your previous answer was:\n${safePrev}\n\n` +
+        `Rewrite the same answer to be much better: more accurate, more helpful, and more practical. ` +
+        `Fix mistakes, add steps/examples if needed, and keep the final answer concise.`;
       return await requestAiReply(msg, modelKey, signal);
     };
 
@@ -606,6 +1010,142 @@
     return reply;
   };
 
+  const requestImage = async (prompt, signal) => {
+    const baseUrl =
+      typeof window !== 'undefined' && typeof window.WORKER_CHAT_URL === 'string'
+        ? window.WORKER_CHAT_URL.trim().replace(/\/+$/, '')
+        : '';
+    const endpoint = baseUrl ? `${baseUrl}/api/image` : '/api/image';
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const isAborted = () => signal && (signal.aborted === true);
+
+    const blobToBase64 = (blob) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    const shouldRetry = (resStatus, upstreamStatus, details) => {
+      const s = typeof upstreamStatus === 'number' ? upstreamStatus : resStatus;
+      const d = String(details || '');
+      if (s === 530) return true;
+      if (s >= 500 && s <= 599) return true;
+      if (/\b1033\b/.test(d)) return true;
+      return false;
+    };
+
+    let lastErr = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (isAborted()) throw new Error('Aborted');
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, width: 768, height: 768 }),
+        signal,
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        // Convert to base64 data URL for persistence
+        const base64Url = await blobToBase64(blob);
+        return base64Url;
+      }
+
+      const data = await res.json().catch(() => null);
+      const err = data && typeof data.error === 'string' ? data.error : 'Request failed';
+      const status = data && typeof data.status === 'number' ? data.status : res.status;
+      const details = data && typeof data.details === 'string' ? data.details : '';
+      const isBusy = res.status === 503 || status === 530 || /\b1033\b/.test(String(details || ''));
+      const msg = isBusy
+        ? 'Image service is busy right now. Please try again in a moment.'
+        : `${err}${status ? ` (${status})` : ''}${details ? `: ${details}` : ''}`;
+      lastErr = new Error(msg);
+
+      if (attempt < 3 && shouldRetry(res.status, status, details)) {
+        await sleep(1100 * (attempt + 1));
+        continue;
+      }
+
+      throw lastErr;
+    }
+
+    throw lastErr || new Error('Request failed');
+  };
+
+  // Fullscreen image modal
+  const openImageModal = (imgUrl) => {
+    // Remove existing modal if any
+    const existingModal = document.getElementById('imageModal');
+    if (existingModal) existingModal.remove();
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.id = 'imageModal';
+    modal.className = 'image-modal';
+
+    // Backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'image-modal__backdrop';
+
+    // Container
+    const container = document.createElement('div');
+    container.className = 'image-modal__container';
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'image-modal__close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    closeBtn.addEventListener('click', () => modal.remove());
+
+    // Image
+    const img = document.createElement('img');
+    img.className = 'image-modal__img';
+    img.src = imgUrl;
+    img.alt = 'Generated image';
+
+    // Controls bar
+    const controls = document.createElement('div');
+    controls.className = 'image-modal__controls';
+
+    // Download button in modal
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'image-modal__btn';
+    downloadBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download';
+    downloadBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.href = imgUrl;
+      link.download = `generated-image-${Date.now()}.png`;
+      link.click();
+    });
+
+    controls.appendChild(downloadBtn);
+    container.appendChild(closeBtn);
+    container.appendChild(img);
+    container.appendChild(controls);
+    modal.appendChild(backdrop);
+    modal.appendChild(container);
+
+    // Close on backdrop click
+    backdrop.addEventListener('click', () => modal.remove());
+
+    // Close on Escape key
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') {
+        modal.remove();
+        document.removeEventListener('keydown', onKeydown);
+      }
+    };
+    document.addEventListener('keydown', onKeydown);
+
+    document.body.appendChild(modal);
+  };
+
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     if (e.shiftKey) return;
@@ -619,7 +1159,7 @@
 
   if (attachImageBtn) {
     attachImageBtn.addEventListener('click', () => {
-      attachImageBtn.classList.toggle('is-active');
+      setImageMode(!isImageMode);
     });
   }
 
@@ -703,6 +1243,7 @@
 
   const resetToLanding = () => {
     stopGeneration();
+    clearChatStorage();
 
     const vote = document.getElementById('battleVoteBar');
     if (vote) vote.remove();
@@ -719,6 +1260,8 @@
     if (chat) chat.hidden = true;
     if (landingTitle) landingTitle.hidden = false;
     if (landingTitleMobile) landingTitleMobile.hidden = false;
+
+    window.setTimeout(() => playLandingTitles(), 150);
 
     if (input) {
       input.value = '';
@@ -826,6 +1369,10 @@
     if (attachImageBtn) {
       attachImageBtn.hidden = !isDirect;
       if (!isDirect) attachImageBtn.classList.remove('is-active');
+    }
+
+    if (!isDirect) {
+      setImageMode(false);
     }
 
     const shouldShow = isSxs || isDirect;
@@ -1060,6 +1607,12 @@
   initModelButtons();
   setMode(battleBtnLabel ? battleBtnLabel.textContent.trim() : 'Direct Chat');
 
+  // Set default mode to image generation
+  setImageMode(true);
+
+  // Restore chat from storage on page load
+  restoreChatFromStorage();
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -1075,22 +1628,27 @@
     ensureChatMode();
     appendUserMessage(value);
 
-    const isBattle = currentMode === 'battle';
+    const isBattle = !isImageMode && currentMode === 'battle';
     const isSxs = currentMode === 'side by side';
-    const isDual = isBattle || isSxs;
+    const isDual = !isImageMode && (isBattle || isSxs);
 
     const headerA = isSxs ? getSelectedModelUi('A') : null;
     const headerB = isSxs ? getSelectedModelUi('B') : null;
 
-    const ai = isDual
-      ? appendBattleAiMessage({ mode: currentMode, headerA, headerB })
-      : appendAiMessage('');
+    const ai = isImageMode
+      ? appendAiMessage('')
+      : isDual
+        ? appendBattleAiMessage({ mode: currentMode, headerA, headerB })
+        : appendAiMessage('');
 
     if (isDual && ai) {
       setThinking(ai.msgA);
       setThinking(ai.msgB);
     }
-    if (!isDual && ai && ai.msg) {
+    if (isImageMode && ai && ai.msg) {
+      setThinking(ai.msg, 'Generating Image…');
+    }
+    if (!isImageMode && !isDual && ai && ai.msg) {
       setThinking(ai.msg);
     }
     shouldAutoScroll = true;
@@ -1100,12 +1658,31 @@
     activeAbortController = new AbortController();
 
     chatHistory.push({ role: 'user', content: value });
+    saveChatToStorage();
 
     input.value = '';
     input.focus();
 
     try {
-      if (isDual) {
+      if (isImageMode) {
+        const imgUrl = await requestImage(value, activeAbortController.signal);
+        if (ai && ai.row) ai.row.remove();
+
+        const node = appendAiImageMessage(imgUrl);
+        if (node && node.img) {
+          node.img.addEventListener(
+            'load',
+            () => {
+              shouldAutoScroll = true;
+              scrollChatToBottom();
+            },
+            { once: true }
+          );
+        }
+        // Save image URL to chat history for persistence
+        chatHistory.push({ role: 'assistant', content: '[IMAGE]', imageUrl: imgUrl });
+        saveChatToStorage();
+      } else if (isDual) {
         const modelKeyA = isBattle ? 'chatgpt' : selectedModelA;
         const modelKeyB = isBattle ? 'gemini' : selectedModelB;
 
@@ -1128,8 +1705,14 @@
           ai.replyB = replyB;
         }
 
-        if (replyA) chatHistory.push({ role: 'assistant', content: replyA });
-        if (replyB) chatHistory.push({ role: 'assistant', content: replyB });
+        if (replyA) {
+          chatHistory.push({ role: 'assistant', content: replyA });
+          saveChatToStorage();
+        }
+        if (replyB) {
+          chatHistory.push({ role: 'assistant', content: replyB });
+          saveChatToStorage();
+        }
 
         if (ai && ai.msgA) {
           const text = replyA || (resA.status === 'rejected' ? 'Error: Request failed' : '');
@@ -1154,6 +1737,7 @@
       } else {
         const reply = await requestAiReply(value, selectedModelA, activeAbortController.signal);
         chatHistory.push({ role: 'assistant', content: reply });
+        saveChatToStorage();
         if (ai && ai.msg) {
           clearThinking(ai.msg);
           activeTyping = typewriterToElement(ai.msg, reply, { minDelay: 10, maxDelay: 22 });
@@ -1162,7 +1746,7 @@
       }
     } catch (err) {
       const isAbort = err && typeof err === 'object' && (err.name === 'AbortError' || err.code === 20);
-      const text = isAbort ? 'متوقف شد.' : `Error: ${err instanceof Error ? err.message : 'Request failed'}`;
+      const text = isAbort ? 'Stopped.' : `Error: ${err instanceof Error ? err.message : 'Request failed'}`;
       if (ai && ai.msg) {
         clearThinking(ai.msg);
         ai.msg.textContent = text;
